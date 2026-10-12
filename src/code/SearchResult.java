@@ -1,17 +1,11 @@
 package code;
 
-public class SearchNode<S> {
-    public final S state;
-    public final SearchNode<S> parent;
-    public final String action;
-    public final int depth;
-    public final long pathCost;
+public class SearchResult<S> {
+    public final SearchNode<S> goal;
+    public final long expandedNodes;
 
-    public SearchNode(S state, SearchNode<S> parent, String action, long pathCost) {
-        this.state = state;
-        this.parent = parent;
-        this.action = action;
-        this.pathCost = pathCost;
-        this.depth = (parent == null) ? 0 : parent.depth + 1;
+    public SearchResult(SearchNode<S> goal, long expandedNodes) {
+        this.goal = goal;
+        this.expandedNodes = expandedNodes;
     }
 }
