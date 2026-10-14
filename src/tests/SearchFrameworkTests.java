@@ -1,35 +1,58 @@
+
 package tests;
 
 import code.*;
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 public class SearchFrameworkTests {
 
-    // A simple mock state representing an integer node in a graph
+    // ---------------------------------------------------------
+    // Mock state
+    // ---------------------------------------------------------
+
     static class IntegerState {
         int id;
-        IntegerState(int id) { this.id = id; }
+
+        IntegerState(int id) {
+            this.id = id;
+        }
+
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof IntegerState)) return false;
             return id == ((IntegerState) o).id;
         }
+
         @Override
         public int hashCode() {
             return Integer.hashCode(id);
         }
     }
 
-    // A mock search problem representing a small graph:
-    // Start (0) -> A (1) with cost 2
-    // A (1) -> Goal (2) with cost 10  (Total cost = 12, 2 actions)
-    // Start (0) -> Goal (2) with cost 15 (Total cost = 15, 1 action)
-    static class MockGraphProblem extends GenericSearchProblem<IntegerState> {
+    // ---------------------------------------------------------
+    // Mock graph problem
+    //
+    //          (1) A ----10----> (2) Goal
+    //         /                   ^
+    //      2 /                    | 15
+    //       /                     |
+    //    (0) Start ---------------+
+    //
+    // Expected:
+    // UCS: cheapest path, cost 12
+    // IDS: shallowest path, directGoal, cost 15
+    // A*: cheapest path, cost 12
+    // ---------------------------------------------------------
+
+    static class MockGraphProblem
+            extends GenericSearchProblem<IntegerState> {
+
         @Override
         public IntegerState initialState() {
             return new IntegerState(0);
@@ -41,24 +64,197 @@ public class SearchFrameworkTests {
         }
 
         @Override
-        public List<Transition<IntegerState>> successors(IntegerState state) {
-            List<Transition<IntegerState>> list = new ArrayList<>();
+        public List<Transition<IntegerState>> successors(
+                IntegerState state) {
+
+            List<Transition<IntegerState>> list =
+                    new ArrayList<>();
+
             if (state.id == 0) {
-                list.add(new Transition<>(new IntegerState(1), "toA", 2L));
-                list.add(new Transition<>(new IntegerState(2), "directGoal", 15L));
+                list.add(new Transition<>(
+                    new IntegerState(1), "toA", 2L
+                ));
+
+                list.add(new Transition<>(
+                    new IntegerState(2), "directGoal", 15L
+                ));
             } else if (state.id == 1) {
-                list.add(new Transition<>(new IntegerState(2), "toGoal", 10L));
+                list.add(new Transition<>(
+                    new IntegerState(2), "toGoal", 10L
+                ));
             }
+
             return list;
         }
 
         @Override
         public long heuristic(IntegerState state) {
-            return 0;
+            return 0L;
         }
 
         @Override
-        public boolean dominates(IntegerState first, IntegerState second) {
+        public boolean dominates(
+                IntegerState first, IntegerState second) {
+            return false;
+        }
+
+        @Override
+        public int maximumDepth() {
+            return 5;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Test 1: Uniform Cost Search
+    // ---------------------------------------------------------
+
+    @Test
+    public void testUniformCostSearch() {
+
+        MockGraphProblem problem = new MockGraphProblem();
+
+        SearchResult<IntegerState> result =
+                GenericSearch.search(problem, "UC");
+
+        assertNotNull(result.goal,
+                "UCS should find the goal");
+
+        assertEquals(12L, result.goal.pathCost,
+                "UCS should find the cheapest path");
+
+        assertEquals(2, result.goal.depth,
+                "The cheapest path should contain two actions");
+
+        assertEquals("toA,toGoal",
+                result.goal.parent.action + ","
+                        + result.goal.action);
+
+        assertEquals(2L, result.expandedNodes,
+                "UCS should expand the start and A");
+    }
+
+    // ---------------------------------------------------------
+    // Test 2: Iterative Deepening Search
+    // ---------------------------------------------------------
+
+    @Test
+    public void testIterativeDeepeningSearch() {
+
+        MockGraphProblem problem = new MockGraphProblem();
+
+        SearchResult<IntegerState> result =
+                GenericSearch.search(problem, "ID");
+
+        assertNotNull(result.goal,
+                "IDS should find the goal");
+
+        assertEquals(15L, result.goal.pathCost,
+                "IDS should return the shallowest solution");
+
+        assertEquals(1, result.goal.depth,
+                "IDS should find the direct one-action path");
+
+        assertEquals("directGoal", result.goal.action,
+                "IDS should select the direct goal");
+
+        assertEquals(1L, result.expandedNodes,
+                "IDS should count expansions across depth limits");
+    }
+
+    // ---------------------------------------------------------
+    // Test 3: A* Search
+    // ---------------------------------------------------------
+
+    @Test
+    public void testAStarSearch() {
+
+        MockGraphProblem problem = new MockGraphProblem();
+
+        SearchResult<IntegerState> result =
+                GenericSearch.search(problem, "AS");
+
+        assertNotNull(result.goal,
+                "A* should find the goal");
+
+        assertEquals(12L, result.goal.pathCost,
+                "A* should find the cheapest path");
+
+        assertEquals(2, result.goal.depth,
+                "The cheapest path should contain two actions");
+
+        assertEquals("toA,toGoal",
+                result.goal.parent.action + ","
+                        + result.goal.action);
+
+        assertEquals(2L, result.expandedNodes,
+                "A* should expand the start and A");
+    }
+
+    // ---------------------------------------------------------
+    // Test 4: Invalid strategy
+    // ---------------------------------------------------------
+
+    @Test
+    public void testInvalidStrategy() {
+
+        MockGraphProblem problem = new MockGraphProblem();
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> GenericSearch.search(problem, "INVALID"),
+            "An invalid strategy should throw an exception"
+        );
+    }
+
+    // ---------------------------------------------------------
+    // Test 5: IDS handles cycles
+    // ---------------------------------------------------------
+
+    static class CyclicGraphProblem
+            extends GenericSearchProblem<IntegerState> {
+
+        @Override
+        public IntegerState initialState() {
+            return new IntegerState(0);
+        }
+
+        @Override
+        public boolean isGoal(IntegerState state) {
+            return state.id == 2;
+        }
+
+        @Override
+        public List<Transition<IntegerState>> successors(
+                IntegerState state) {
+
+            List<Transition<IntegerState>> list =
+                    new ArrayList<>();
+
+            if (state.id == 0) {
+                list.add(new Transition<>(
+                    new IntegerState(1), "toA", 1L
+                ));
+            } else if (state.id == 1) {
+                list.add(new Transition<>(
+                    new IntegerState(0), "backToStart", 1L
+                ));
+
+                list.add(new Transition<>(
+                    new IntegerState(2), "toGoal", 1L
+                ));
+            }
+
+            return list;
+        }
+
+        @Override
+        public long heuristic(IntegerState state) {
+            return 0L;
+        }
+
+        @Override
+        public boolean dominates(
+                IntegerState first, IntegerState second) {
             return false;
         }
 
@@ -69,21 +265,23 @@ public class SearchFrameworkTests {
     }
 
     @Test
-    public void testUniformCostSearch() {
-        MockGraphProblem problem = new MockGraphProblem();
-        SearchResult<IntegerState> result = GenericSearch.search(problem, "UC");
+    public void testIterativeDeepeningHandlesCycles() {
 
-        assertNotNull(result.goal, "UC should find a solution");
-        assertEquals(12L, result.goal.pathCost, "UC should find the path with the lowest cost (12)");
-        assertEquals("toA,toGoal", result.goal.parent.action + "," + result.goal.action);
-    }
+        CyclicGraphProblem problem = new CyclicGraphProblem();
 
-    @Test
-    public void testIterativeDeepeningSearch() {
-        MockGraphProblem problem = new MockGraphProblem();
-        SearchResult<IntegerState> result = GenericSearch.search(problem, "ID");
+        SearchResult<IntegerState> result =
+                GenericSearch.search(problem, "ID");
 
-        assertNotNull(result.goal, "ID should find a solution");
-        assertEquals("directGoal", result.goal.action, "ID should choose the path with fewer actions");
+        assertNotNull(result.goal,
+                "IDS should find the goal despite the cycle");
+
+        assertEquals(2, result.goal.state.id,
+                "The solution should reach the goal state");
+
+        assertEquals(2, result.goal.depth,
+                "The solution should take two actions");
+
+        assertEquals(2L, result.goal.pathCost,
+                "The solution should cost two");
     }
 }
