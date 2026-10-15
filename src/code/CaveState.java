@@ -20,7 +20,6 @@ public final class CaveState {
         this.rope = rope;
         this.lives = lives;
         this.hasKey = hasKey;
-        // Keep each search state independent from changes to the caller's arrays.
         this.doorsOpen = doorsOpen.clone();
         this.keysCollected = keysCollected.clone();
     }

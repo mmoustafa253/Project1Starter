@@ -14,6 +14,7 @@ public class CaveExplorer extends GenericSearchProblem<CaveState> {
     private int initialRope;
     private int[][] doors;
     private int[][] keys;
+    private long[][][] energyToItems;
 
     public CaveExplorer(String initString) {
         String[] sections = initString.split(";");
@@ -53,7 +54,9 @@ public class CaveExplorer extends GenericSearchProblem<CaveState> {
             this.keys[i][0] = Integer.parseInt(keyCoordinates[2 * i]);
             this.keys[i][1] = Integer.parseInt(keyCoordinates[2 * i + 1]);
         }
+        this.energyToItems = CaveHeuristic.calculateDistances(this);
     }
+
     @Override
     public CaveState initialState() {
         return new CaveState(startX, startY, initialEnergy, initialRope, 3,
@@ -133,7 +136,6 @@ public class CaveExplorer extends GenericSearchProblem<CaveState> {
             return;
         }
 
-        // All movement pays the destination difficulty, including jumpdown.
         CaveState next = new CaveState(nextX, nextY,
                 state.getEnergy() - energyUsed, state.getRope() - ropeUsed,
                 state.getLives() - livesUsed, state.hasKey(),
@@ -158,20 +160,13 @@ public class CaveExplorer extends GenericSearchProblem<CaveState> {
         return keysCollected;
     }
 
-    // Temporary lower bound until Person 3 supplies CaveHeuristic.estimate.
-    // Each unopened door away from our position must be entered at least once.
-    // Sum only those destination costs, ignoring other movement and lost lives.
-    // This cannot exceed the remaining energy + 501 * lives cost of a solution.
     @Override
     public long heuristic(CaveState state) {
-        long estimate = 0;
-        for (int i = 0; i < doors.length; i++) {
-            if (!state.isDoorOpen(i)
-                    && (doors[i][0] != state.getX() || doors[i][1] != state.getY())) {
-                estimate += grid[doors[i][1]][doors[i][0]];
-            }
-        }
-        return estimate;
+        return CaveHeuristic.estimate(this, state);
+    }
+
+    long minimumEnergyToItem(int index, int x, int y) {
+        return energyToItems[index][y][x];
     }
 
     @Override
@@ -197,7 +192,6 @@ public class CaveExplorer extends GenericSearchProblem<CaveState> {
 
     @Override
     public int maximumDepth() {
-        // Every move costs at least one energy; each item action happens once.
         return initialEnergy + keys.length + doors.length;
     }
 

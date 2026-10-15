@@ -1,265 +1,131 @@
-
 package code;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
 
 public class GenericSearch {
-
-    public static <S> SearchResult<S> search(
-            GenericSearchProblem<S> problem, String strategy) {
-
-        switch (strategy) {
-            case "UC":
-                return uniformCostSearch(problem);
-            case "ID":
-                return iterativeDeepening(problem);
-            case "AS":
-                return aStarSearch(problem);
-            default:
-                throw new IllegalArgumentException(
-                    "Invalid strategy: " + strategy
-                );
+    public static <S> SearchResult<S> search(GenericSearchProblem<S> problem,
+            String strategy) {
+        if ("UC".equals(strategy)) {
+            return uniformCostSearch(problem);
+        } else if ("ID".equals(strategy)) {
+            return iterativeDeepening(problem);
+        } else if ("AS".equals(strategy)) {
+            return AStarSearch.search(problem);
         }
+        throw new IllegalArgumentException("Invalid strategy: " + strategy);
     }
 
-    // ---------------------------------------------------------
-    // Uniform Cost Search (UCS)
-    // ---------------------------------------------------------
-
-    private static <S> SearchResult<S> uniformCostSearch(
-            GenericSearchProblem<S> problem) {
-
-        PriorityQueue<SearchNode<S>> frontier = new PriorityQueue<>(
-            Comparator.comparingLong(n -> n.pathCost)
-        );
-
-        Map<S, Long> explored = new HashMap<>();
-
-        SearchNode<S> root = new SearchNode<>(
-            problem.initialState(), null, null, 0L
-        );
-
-        frontier.add(root);
-        long expandedCount = 0;
+    private static <S> SearchResult<S> uniformCostSearch(GenericSearchProblem<S> problem) {
+        Comparator<SearchNode<S>> compareCost = new Comparator<SearchNode<S>>() {
+            @Override
+            public int compare(SearchNode<S> first, SearchNode<S> second) {
+                return Long.compare(first.pathCost, second.pathCost);
+            }
+        };
+        PriorityQueue<SearchNode<S>> frontier = new PriorityQueue<>(compareCost);
+        Map<S, Long> bestCost = new HashMap<>();
+        S initial = problem.initialState();
+        frontier.add(new SearchNode<>(initial, null, null, 0L));
+        bestCost.put(initial, 0L);
+        long expandedNodes = 0;
 
         while (!frontier.isEmpty()) {
             SearchNode<S> current = frontier.poll();
-
-            Long oldCost = explored.get(current.state);
-
-            // Skip a state already expanded at an equal or lower cost.
-            if (oldCost != null && current.pathCost >= oldCost) {
+            if (current.pathCost > bestCost.get(current.state)) {
                 continue;
             }
-
-            // Goal nodes are not counted as expanded.
             if (problem.isGoal(current.state)) {
-                return new SearchResult<>(current, expandedCount);
+                return new SearchResult<>(current, expandedNodes);
             }
 
-            explored.put(current.state, current.pathCost);
-            expandedCount++;
-
-            for (Transition<S> t : problem.successors(current.state)) {
-                SearchNode<S> child = new SearchNode<>(
-                    t.state,
-                    current,
-                    t.action,
-                    current.pathCost + t.stepCost
-                );
-
-                frontier.add(child);
+            expandedNodes++;
+            for (Transition<S> transition : problem.successors(current.state)) {
+                long newCost = current.pathCost + transition.stepCost;
+                Long oldCost = bestCost.get(transition.state);
+                if (oldCost == null || newCost < oldCost) {
+                    bestCost.put(transition.state, newCost);
+                    frontier.add(new SearchNode<>(transition.state, current,
+                            transition.action, newCost));
+                }
             }
         }
-
-        return new SearchResult<>(null, expandedCount);
+        return new SearchResult<>(null, expandedNodes);
     }
 
-    // ---------------------------------------------------------
-    // Iterative Deepening Search (IDS)
-    // ---------------------------------------------------------
-
-    private static <S> SearchResult<S> iterativeDeepening(
-            GenericSearchProblem<S> problem) {
-
-        long totalExpanded = 0;
-        int maxDepth = problem.maximumDepth();
-
-        for (int depth = 0; depth <= maxDepth; depth++) {
-            SearchResult<S> result = depthLimitedSearch(problem, depth);
-
-            totalExpanded += result.expandedNodes;
-
+    private static <S> SearchResult<S> iterativeDeepening(GenericSearchProblem<S> problem) {
+        long expandedNodes = 0;
+        for (int limit = 0; limit <= problem.maximumDepth(); limit++) {
+            SearchResult<S> result = depthLimitedSearch(problem, limit);
+            expandedNodes += result.expandedNodes;
             if (result.goal != null) {
-                return new SearchResult<>(result.goal, totalExpanded);
+                return new SearchResult<>(result.goal, expandedNodes);
             }
         }
-
-        return new SearchResult<>(null, totalExpanded);
+        return new SearchResult<>(null, expandedNodes);
     }
 
     private static <S> SearchResult<S> depthLimitedSearch(
             GenericSearchProblem<S> problem, int limit) {
-
-        Stack<SearchNode<S>> frontier = new Stack<>();
-
-        SearchNode<S> root = new SearchNode<>(
-            problem.initialState(), null, null, 0L
-        );
-
-        frontier.push(root);
-        long expandedCount = 0;
+        Deque<SearchNode<S>> frontier = new ArrayDeque<>();
+        Map<S, Integer> bestDepth = new HashMap<>();
+        List<SearchNode<S>> visited = new ArrayList<>();
+        frontier.push(new SearchNode<>(problem.initialState(), null, null, 0L));
+        long expandedNodes = 0;
 
         while (!frontier.isEmpty()) {
             SearchNode<S> current = frontier.pop();
-
-            // Goal nodes are not counted as expanded.
+            Integer oldDepth = bestDepth.get(current.state);
+            if (oldDepth != null && oldDepth <= current.depth) {
+                continue;
+            }
             if (problem.isGoal(current.state)) {
-                return new SearchResult<>(current, expandedCount);
+                return new SearchResult<>(current, expandedNodes);
             }
-
-            if (current.depth < limit) {
-                List<Transition<S>> successors =
-                    problem.successors(current.state);
-
-                // Count the node because its successors are generated.
-                expandedCount++;
-
-                // Reverse order preserves left-to-right DFS traversal.
-                for (int i = successors.size() - 1; i >= 0; i--) {
-                    Transition<S> t = successors.get(i);
-
-                    // Do not revisit states already on the current path.
-                    if (!isOnPath(current, t.state)) {
-                        SearchNode<S> child = new SearchNode<>(
-                            t.state,
-                            current,
-                            t.action,
-                            current.pathCost + t.stepCost
-                        );
-
-                        frontier.push(child);
-                    }
-                }
-            }
-        }
-
-        return new SearchResult<>(null, expandedCount);
-    }
-
-    // Checks whether a state already exists on the current path.
-    private static <S> boolean isOnPath(
-            SearchNode<S> node, S state) {
-
-        while (node != null) {
-            if (Objects.equals(node.state, state)) {
-                return true;
-            }
-
-            node = node.parent;
-        }
-
-        return false;
-    }
-
-    // ---------------------------------------------------------
-    // A* Search
-    // f(n) = g(n) + h(n)
-    // g(n) = cost so far
-    // h(n) = estimated remaining cost
-    // ---------------------------------------------------------
-
-    private static class AStarEntry<S>
-            implements Comparable<AStarEntry<S>> {
-
-        SearchNode<S> node;
-        long f;
-
-        AStarEntry(SearchNode<S> node, long f) {
-            this.node = node;
-            this.f = f;
-        }
-
-        @Override
-        public int compareTo(AStarEntry<S> other) {
-            return Long.compare(this.f, other.f);
-        }
-    }
-
-    private static <S> SearchResult<S> aStarSearch(
-            GenericSearchProblem<S> problem) {
-
-        S start = problem.initialState();
-
-        SearchNode<S> root = new SearchNode<>(
-            start, null, null, 0L
-        );
-
-        PriorityQueue<AStarEntry<S>> frontier =
-            new PriorityQueue<>();
-
-        frontier.add(new AStarEntry<>(
-            root, addSafely(0L, problem.heuristic(start))
-        ));
-
-        Map<S, Long> bestG = new HashMap<>();
-        bestG.put(start, 0L);
-
-        long expandedCount = 0;
-
-        while (!frontier.isEmpty()) {
-            SearchNode<S> current = frontier.poll().node;
-
-            Long bestCost = bestG.get(current.state);
-
-            // Skip an outdated entry if a cheaper path was found.
-            if (bestCost == null || current.pathCost > bestCost) {
+            bestDepth.put(current.state, current.depth);
+            if (current.depth == limit || isDominated(problem, visited, current)) {
                 continue;
             }
 
-            // Goal nodes are not counted as expanded.
-            if (problem.isGoal(current.state)) {
-                return new SearchResult<>(current, expandedCount);
-            }
-
-            List<Transition<S>> successors =
-                problem.successors(current.state);
-
-            expandedCount++;
-
-            for (Transition<S> t : successors) {
-                long newG = current.pathCost + t.stepCost;
-                Long oldG = bestG.get(t.state);
-
-                // Update only when a cheaper path is found.
-                if (oldG == null || newG < oldG) {
-                    bestG.put(t.state, newG);
-
-                    SearchNode<S> child = new SearchNode<>(
-                        t.state,
-                        current,
-                        t.action,
-                        newG
-                    );
-
-                    long f = addSafely(
-                        newG, problem.heuristic(t.state)
-                    );
-
-                    frontier.add(new AStarEntry<>(child, f));
-                }
+            rememberState(problem, visited, current);
+            expandedNodes++;
+            List<Transition<S>> transitions = problem.successors(current.state);
+            for (int i = transitions.size() - 1; i >= 0; i--) {
+                Transition<S> transition = transitions.get(i);
+                frontier.push(new SearchNode<>(transition.state, current,
+                        transition.action, current.pathCost + transition.stepCost));
             }
         }
-
-        return new SearchResult<>(null, expandedCount);
+        return new SearchResult<>(null, expandedNodes);
     }
 
-    // Prevents overflow when calculating g + h.
-    private static long addSafely(long g, long h) {
-        if (h >= Long.MAX_VALUE - g) {
-            return Long.MAX_VALUE;
+    private static <S> boolean isDominated(GenericSearchProblem<S> problem,
+            List<SearchNode<S>> visited, SearchNode<S> current) {
+        for (int i = 0; i < visited.size(); i++) {
+            SearchNode<S> previous = visited.get(i);
+            if (previous.depth <= current.depth
+                    && problem.dominates(previous.state, current.state)) {
+                return true;
+            }
         }
+        return false;
+    }
 
-        return g + h;
+    private static <S> void rememberState(GenericSearchProblem<S> problem,
+            List<SearchNode<S>> visited, SearchNode<S> current) {
+        for (int i = visited.size() - 1; i >= 0; i--) {
+            SearchNode<S> previous = visited.get(i);
+            if (current.depth <= previous.depth
+                    && problem.dominates(current.state, previous.state)) {
+                visited.remove(i);
+            }
+        }
+        visited.add(current);
     }
 }

@@ -12,6 +12,10 @@ public class SearchNode<S> {
         this.parent = parent;
         this.action = action;
         this.pathCost = pathCost;
-        this.depth = (parent == null) ? 0 : parent.depth + 1;
+        if (parent == null) {
+            this.depth = 0;
+        } else {
+            this.depth = parent.depth + 1;
+        }
     }
 }
