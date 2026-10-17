@@ -2,15 +2,20 @@ package code;
 
 import java.util.Arrays;
 
+/**
+ * One snapshot of the cave: explorer position, remaining resources,
+ * whether a key is carried, and which doors/keys are already done.
+ * Immutable, so it is safe to use as a HashMap key.
+ */
 public final class CaveState {
-    private final int x;
-    private final int y;
-    private final int energy;
-    private final int rope;
-    private final int lives;
-    private final boolean hasKey;
-    private final boolean[] doorsOpen;
-    private final boolean[] keysCollected;
+    private final int x;                    // column of the explorer
+    private final int y;                    // row of the explorer
+    private final int energy;               // energy remaining
+    private final int rope;                 // rope remaining (meters)
+    private final int lives;                // lives remaining
+    private final boolean hasKey;           // carrying a key (max one)
+    private final boolean[] doorsOpen;      // doorsOpen[i] = door i is unlocked
+    private final boolean[] keysCollected;  // keysCollected[i] = key i was picked up
 
     public CaveState(int x, int y, int energy, int rope, int lives,
             boolean hasKey, boolean[] doorsOpen, boolean[] keysCollected) {
@@ -20,6 +25,7 @@ public final class CaveState {
         this.rope = rope;
         this.lives = lives;
         this.hasKey = hasKey;
+        // Copy the arrays so no one outside can change this state.
         this.doorsOpen = doorsOpen.clone();
         this.keysCollected = keysCollected.clone();
     }
@@ -56,6 +62,7 @@ public final class CaveState {
         return keysCollected[index];
     }
 
+    // Two states are equal if every field matches (used to detect repeated states).
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -77,6 +84,7 @@ public final class CaveState {
             && Arrays.equals(keysCollected, state.keysCollected);
     }
 
+    // Must agree with equals so HashMap lookups work.
     @Override
     public int hashCode() {
         int result = Integer.hashCode(x);
